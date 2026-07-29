@@ -42,9 +42,9 @@ $$
 
 | 符号 | 含义 |
 |---|---|
-| \(B\) | 同时处理的 token、request 或 speculative branch 数量 |
-| \(K\) | 输入 hidden size，也就是点积的归约维度 |
-| \(N\) | 输出 hidden size 或输出通道数 |
+| $B$ | 同时处理的 token、request 或 speculative branch 数量 |
+| $K$ | 输入 hidden size，也就是点积的归约维度 |
+| $N$ | 输出 hidden size 或输出通道数 |
 
 每个输出元素为：
 
@@ -78,7 +78,7 @@ $$
 ACC_{b,n}.
 $$
 
-随着 \(k\) 维的数据逐周期进入阵列，PE 执行：
+随着 $k$ 维的数据逐周期进入阵列，PE 执行：
 
 $$
 ACC_{b,n}
@@ -88,7 +88,7 @@ ACC_{b,n}
 X_{b,k}W_{k,n}.
 $$
 
-遍历完整个 \(K\) 维后：
+遍历完整个 $K$ 维后：
 
 $$
 ACC_{b,n} =
@@ -105,10 +105,10 @@ $$
 
 | 数据 | 行为 |
 |---|---|
-| Activation \(X_{b,k}\) | 在阵列中传播或广播 |
-| Weight \(W_{k,n}\) | 在阵列中传播或广播 |
+| Activation $X_{b,k}$ | 在阵列中传播或广播 |
+| Weight $W_{k,n}$ | 在阵列中传播或广播 |
 | Partial sum/ACC | 固定在负责该输出的 PE 中 |
-| \(K\) 维 | 主要沿时间展开 |
+| $K$ 维 | 主要沿时间展开 |
 | 最终输出 | 累加完成后从 PE 读出 |
 
 可以将一个 PE 的行为概括为：
@@ -130,7 +130,7 @@ $$
 B_{\text{tile}}\times N_{\text{tile}}.
 $$
 
-第 \((b,n)\) 个 PE 保存：
+第 $(b,n)$ 个 PE 保存：
 
 $$
 ACC_{b,n}.
@@ -154,7 +154,7 @@ $$
 
 “hidden state 可以无限大”更准确的说法是：
 
-> \(K\) 维不受阵列空间尺寸的直接限制，可以映射到时间维；只要控制器、数据供给和累加精度允许，PE 就可以继续累加。
+> $K$ 维不受阵列空间尺寸的直接限制，可以映射到时间维；只要控制器、数据供给和累加精度允许，PE 就可以继续累加。
 
 ### 3.4 Decode 场景下的映射
 
@@ -178,20 +178,20 @@ $$
 
 因此：
 
-- \(B_{\text{tile}}\) 可以对应并行 token、request 或 branch；
-- \(N_{\text{tile}}\) 对应一部分输出 hidden 维；
-- \(K\) 沿时间完整流过；
-- 如果 \(N>N_{\text{tile}}\)，仍然需要对输出维 \(N\) 进行切分。
+- $B_{\text{tile}}$ 可以对应并行 token、request 或 branch；
+- $N_{\text{tile}}$ 对应一部分输出 hidden 维；
+- $K$ 沿时间完整流过；
+- 如果 $N>N_{\text{tile}}$，仍然需要对输出维 $N$ 进行切分。
 
 所以 output-stationary 并非完全不需要 tiling，而是：
 
-> 它通常不需要把 \(K\) 维的 partial sum 在多个 PE 或 output buffer 之间反复合并，但仍可能切分 \(B\) 维和 \(N\) 维。
+> 它通常不需要把 $K$ 维的 partial sum 在多个 PE 或 output buffer 之间反复合并，但仍可能切分 $B$ 维和 $N$ 维。
 
 ### 3.5 主要优点
 
 #### 3.5.1 对大 hidden size 更灵活
 
-\(K\) 维可以完全沿时间遍历，不要求阵列空间覆盖 hidden size。
+$K$ 维可以完全沿时间遍历，不要求阵列空间覆盖 hidden size。
 
 #### 3.5.2 partial sum 不需要在 PE 之间流动
 
@@ -211,7 +211,7 @@ $$
 
 #### 3.5.3 不需要频繁产生 hidden tile 的外部中间结果
 
-如果 PE 能够连续处理完整的 \(K\) 维，就不需要每处理一小段 hidden 维便把 partial sum 写入 output buffer，再在后续轮次读出并继续累加。
+如果 PE 能够连续处理完整的 $K$ 维，就不需要每处理一小段 hidden 维便把 partial sum 写入 output buffer，再在后续轮次读出并继续累加。
 
 #### 3.5.4 适合 branch 数较小且上限明确的场景
 
@@ -320,9 +320,9 @@ activation in ──► [ PE: p + a × local weight ] ──► activation out
 
 | 数据 | 行为 |
 |---|---|
-| Activation \(X_{b,k}\) | 水平方向传播 |
-| Weight \(W_{k,n}\) | 驻留在 PE 的本地 weight buffer |
-| Partial sum \(p\) | 垂直方向逐级传播 |
+| Activation $X_{b,k}$ | 水平方向传播 |
+| Weight $W_{k,n}$ | 驻留在 PE 的本地 weight buffer |
+| Partial sum $p$ | 垂直方向逐级传播 |
 | 跨 tile 累加结果 | 保存在 output buffer 中 |
 | 最终输出 | 从阵列底部输出，经加法树和 output buffer 合并 |
 
@@ -340,7 +340,7 @@ $$
 W_{k,n}.
 $$
 
-对于当前 branch \(b\)，partial sum 沿 \(K_{\text{tile}}\) 个 PE 逐级累加：
+对于当前 branch $b$，partial sum 沿 $K_{\text{tile}}$ 个 PE 逐级累加：
 
 $$
 p_{r,n} =
@@ -365,7 +365,7 @@ $$
 K=4096,\ 8192,\ \ldots
 $$
 
-而 FPGA 不可能构造具有数千行 PE、并让整个 \(K\) 维一次性完全展开的阵列。因此：
+而 FPGA 不可能构造具有数千行 PE、并让整个 $K$ 维一次性完全展开的阵列。因此：
 
 $$
 K_{\text{tile}}\ll K.
@@ -399,7 +399,7 @@ $$
 
 因此，对 DFVG 数据流的以下判断是成立的：
 
-> 由于它将一部分 \(K\) 维映射到阵列空间，而阵列无法覆盖完整 hidden size，所以必然需要对 \(K\) 维反复切分，并产生跨轮 partial-sum 累加。
+> 由于它将一部分 $K$ 维映射到阵列空间，而阵列无法覆盖完整 hidden size，所以必然需要对 $K$ 维反复切分，并产生跨轮 partial-sum 累加。
 
 ---
 
@@ -478,7 +478,7 @@ $$
 - 连接规则；
 - 通信距离短；
 - 容易进行深流水；
-- 不需要在阵列内部构造覆盖整个 \(K_{\text{tile}}\) 的高扇入组合加法树；
+- 不需要在阵列内部构造覆盖整个 $K_{\text{tile}}$ 的高扇入组合加法树；
 - 在大 FPGA 上更容易布线并满足较高时钟频率。
 
 阵列填满后，可以流水化地连续接收新的 branch/token。
@@ -536,18 +536,18 @@ DFVG 的 PE 主要保存：
 | Activation | 在 PE 间传播或广播 | 水平传播 |
 | Weight | 在 PE 间传播或广播 | 驻留在本地 weight buffer |
 | Partial sum | 固定在 PE 内 | 垂直传播 |
-| 主要空间映射 | \(B_{\text{tile}}\times N_{\text{tile}}\) | \(K_{\text{tile}}\times N_{\text{tile}}\) |
-| \(K\)/hidden 维 | 主要沿时间完整展开 | 部分空间展开，其余切成多个 tile |
-| \(B\)/branch 维 | 通常部分空间展开 | 更容易沿时间展开 |
+| 主要空间映射 | $B_{\text{tile}}\times N_{\text{tile}}$ | $K_{\text{tile}}\times N_{\text{tile}}$ |
+| $K$/hidden 维 | 主要沿时间完整展开 | 部分空间展开，其余切成多个 tile |
+| $B$/branch 维 | 通常部分空间展开 | 更容易沿时间展开 |
 | 大 hidden size | 更自然 | 需要多轮 hidden-tile 累加 |
 | 动态 branch 数 | 可能导致为 branch 预留的 PE 空闲 | 更容易通过改变运行周期数适应 |
 | 权重跨 branch 复用 | 依赖广播和可同时容纳的 branch 数 | 本地权重可被连续到达的 branch 复用 |
-| 跨 \(K\) tile 的外部累加 | 通常不需要，或需求较少 | 需要在 output buffer 中完成 |
+| 跨 $K$ tile 的外部累加 | 通常不需要，或需求较少 | 需要在 output buffer 中完成 |
 | PE 间归约通信 | 少，同一输出留在本地 | partial sum 逐 PE 传播 |
 | 本地累加器资源 | 每个有效输出需要宽 ACC | 长期累加集中到 output buffer |
 | 阵列内连接 | activation 与 weight 的分发可能较复杂 | activation 与 psum 的邻接传播较规则 |
 | DSP 双 BF16 packing | 可以实现，但需组织共享权重 | 与本地共享权重自然匹配 |
-| 通用性 | 对各种 \(K\) 更灵活 | 更针对动态多 branch 工作负载 |
+| 通用性 | 对各种 $K$ 更灵活 | 更针对动态多 branch 工作负载 |
 
 ---
 
@@ -555,7 +555,7 @@ DFVG 的 PE 主要保存：
 
 ### 7.1 对 DFVG 的批评为什么成立
 
-DFVG 把有限的 PE 空间用于展开一部分 \(K\) 维：
+DFVG 把有限的 PE 空间用于展开一部分 $K$ 维：
 
 $$
 K_{\text{tile}}\times N_{\text{tile}}.
@@ -577,9 +577,9 @@ $$
 
 因此它牺牲了以下灵活性：
 
-> 无法像 output-stationary 那样，让任意长度的 \(K\) 维直接在同一个 PE 的本地 ACC 中持续累加。
+> 无法像 output-stationary 那样，让任意长度的 $K$ 维直接在同一个 PE 的本地 ACC 中持续累加。
 
-hidden size 越大，\(T_K\) 越大，以下代价越明显：
+hidden size 越大，$T_K$ 越大，以下代价越明显：
 
 - output buffer 的累加次数增加；
 - partial sum 的读写和传输增加；
@@ -596,14 +596,14 @@ $$
 
 因此：
 
-- 如果 \(B>B_{\text{tile}}\)，需要切分 batch/branch 维；
-- 如果 \(N>N_{\text{tile}}\)，需要切分输出维；
+- 如果 $B>B_{\text{tile}}$，需要切分 batch/branch 维；
+- 如果 $N>N_{\text{tile}}$，需要切分输出维；
 - 本地 ACC 数量受到寄存器、DSP 和片上存储资源限制；
 - 若权重无法高效广播，权重带宽仍可能成为瓶颈。
 
 其优势并不是“不做任何 tiling”，而是：
 
-> 对每个已映射到 PE 的输出元素，可以让完整 \(K\) 维沿时间累加，避免频繁输出 hidden-tile partial sums。
+> 对每个已映射到 PE 的输出元素，可以让完整 $K$ 维沿时间累加，避免频繁输出 hidden-tile partial sums。
 
 ---
 
@@ -659,7 +659,7 @@ $$
 
 - 权重跨 branch 复用；
 - 本地 ACC；
-- 不产生每个小 \(K\) tile 的外部 partial sum；
+- 不产生每个小 $K$ tile 的外部 partial sum；
 - 对大 hidden size 的自然支持。
 
 如果 branch 数稳定且阵列可以容纳，这种设计可能比 DFVG 的数据流更灵活。

@@ -28,19 +28,19 @@ Hummingbird中提出根据带宽设计FPGA的计算单元，由于带宽有限�
 其中主要设计了一个矩阵乘法单元，该单元在性能上可能与传统的二维脉动阵列和树形阵列相比并没有优势，但减少了FPGA资源（DSP和FF）的使用，具体架构如图：
 ![](./imgs/Hummingbird%20tree%20architecture.png)
 这仍然是一个树结构，其中包含 MAC DSP chain 和 add DSP chain。
-MAC DSP chain 如下图所示，它充分使用了一个 DSP 单元中的乘法器和加法器，chain 中每个 DSP 每周期执行一次 MAC 运算，并且支持两种模式，可以避免计算 \(PV\) 时对 \(V\) 进行转置。
+MAC DSP chain 如下图所示，它充分使用了一个 DSP 单元中的乘法器和加法器，chain 中每个 DSP 每周期执行一次 MAC 运算，并且支持两种模式，可以避免计算 $PV$ 时对 $V$ 进行转置。
 ![](./imgs/Hummingbird%20dsp%20mac%20chain.png)
 Add DSP chain 如下图所示，通过 3 个 DSP 级联实现 6 输入、1 输出的加法器。
 ![](./imgs/Hummingbird%20dsp%20add%20chain.png)
 
-传统树结构需要 128 个 DSP 作为乘法器，\(64+32+16+8+4+2+1=127\) 个 DSP 作为加法器，一共需要 255 个 DSP；Hummingbird 只需要 \(128+15+1+3=147\) 个 DSP，节省 108 个 DSP，即约 42% 的 DSP 资源。
+传统树结构需要 128 个 DSP 作为乘法器，$64+32+16+8+4+2+1=127$ 个 DSP 作为加法器，一共需要 255 个 DSP；Hummingbird 只需要 $128+15+1+3=147$ 个 DSP，节省 108 个 DSP，即约 42% 的 DSP 资源。
 Hummingbird+进一步去优化了Hummingbird中的计算单元设计和流水线设计，实现了混合精度设计。Hummingbird+中提到的`MOE重新给了低端FPGA机会`，其实就是说MOE让一次decode需要的参数量减少了，使得在FPGA上生成token的速度：
 
-\[
+$$
 \text{生成速度}\approx
 \frac{\text{有效内存带宽}}
 {\text{每个 token 需要读取的有效参数字节数}}
-\]
+$$
 
 达到了可用的程度。
 
@@ -78,12 +78,17 @@ FPGA+GPU混合架构的实验验证往往需要和GPU单机进行对比，验证
 ![](./imgs/Summary%20of%20LLM%20inference%20optimizations%20and%20the%20computations%20in%20their%20memory%20processing%20pipeline.png)
 
 通过 arithmetic intensity 分析不同阶段的计算密集度；arithmetic intensity 较低的阶段可以认为是 memory-bound，可以尝试放到 FPGA 上处理。
-\[
+
+$$
 \text{Arithmetic Intensity}=\frac{\text{FLOPs}}{\text{Bytes transferred}}
-\]
+$$
+
 ![](./imgs/arithmetic%20intensity%20of%20memory%20processes.png)
+
 #### 2.3.2 GPU–FPGA 系统的三种部署方式
+
 ![](./imgs/三种FPGA-GPU协同设计.png)
+
 ##### 1. General Setup：Sparse Attention 和 RAG
 
 这是论文最主要的架构。
@@ -104,15 +109,15 @@ FPGA 执行
 
 数据流如下：
 
-\[
+$$
 \text{GPU生成索引}
 \rightarrow
 \text{FPGA保存索引}
-\]
+$$
 
 每次 query：
 
-\[
+$$
 \text{GPU发送query}
 \rightarrow
 \text{FPGA计算score和top-k}
@@ -120,7 +125,7 @@ FPGA 执行
 \text{GPU接收indices}
 \rightarrow
 \text{GPU提取KV并执行attention}
-\]
+$$
 
 **为什么不把 KV cache extraction 也放到 FPGA**
 
@@ -130,19 +135,19 @@ FPGA 执行
 
 因此作者只返回索引：
 
-\[
+$$
 \text{FPGA}\rightarrow\text{GPU}:
 \quad
 {i_1,i_2,\ldots,i_k}
-\]
+$$
 
 而不是：
 
-\[
+$$
 \text{FPGA}\rightarrow\text{GPU}:
 \quad
 {K_{i_j},V_{i_j}}_{j=1}^{k}
-\]
+$$
 
 GPU 已经保存完整 KV，所以只需根据索引执行 gather。
 
@@ -182,11 +187,11 @@ MemAgent 的 memory generation 是 LLM decode，memory application 是 LLM prefi
 
 | Batch size | MemAgent GPU–FPGA 相对 GPU 的速度 |
 | ---------: | ---------------------------: |
-|          1 |                 \(1.85\times\) |
-|          2 |                 \(1.65\times\) |
-|          4 |                 \(0.93\times\) |
-|          8 |                 \(0.49\times\) |
-|         32 |                 \(0.13\times\) |
+|          1 |                 $1.85\times$ |
+|          2 |                 $1.65\times$ |
+|          4 |                 $0.93\times$ |
+|          8 |                 $0.49\times$ |
+|         32 |                 $0.13\times$ |
 
 原因是 batch 增大后，GPU decode 可以跨样本复用权重并提高 HBM/Tensor Core 利用率，而 FPGA 的 dense compute 吞吐不足。
 
@@ -233,9 +238,9 @@ FPGA 上的 cross attention 包含部分线性投影。随着 batch 增大，GPU
 ![](./imgs/tree%20sort%20reorder.png)
 DFVG 通过 path packing 对节点重新排序，使同一路径或具有较多共享祖先的 token 尽可能相邻。例如可以重排为：
 
-\[
+$$
 R,\ A,E,H,D,\ B,F,\ C,G,I,J
-\]
+$$
 
 之后再根据 sibling 和 path 关系将节点划分为若干 block。每个 block：
 
@@ -246,14 +251,14 @@ R,\ A,E,H,D,\ B,F,\ C,G,I,J
 
 论文将其写为：
 
-\[
+$$
 \operatorname{Att}_{\mathrm{tree}}=
 \bigoplus_{k=1}^{K}
 \operatorname{Att}_{\mathrm{block}}
 (Q_{B_k},K_{B_k},V_{B_k},M_{B_k})
-\]
+$$
 
-其中，\(\bigoplus\) 表示将各 block 的输出恢复到原始 token tree 顺序。
+其中，$\bigoplus$ 表示将各 block 的输出恢复到原始 token tree 顺序。
 #### FPGA 上的 Multi Compute Core Overlay
 ![](./imgs/DVFG%20PE%20architecture.png)
 
@@ -261,9 +266,9 @@ R,\ A,E,H,D,\ B,F,\ C,G,I,J
 
 多个计算核分别计算输出向量的一部分：
 
-\[
+$$
 y=\sum_c W_cx
-\]
+$$
 
 各计算核产生 partial sum，最后通过并行加法树合并。
 
@@ -282,27 +287,27 @@ y=\sum_c W_cx
 
 对于普通单路径 draft decode，每生成一个 token 都需要重新读取大部分模型权重，权重复用很低。DFVG 同时处理多个 speculative branch，使一个权重 tile 可以被多个 branch activation 复用：
 
-\[
+$$
 W[X_1,X_2,\ldots,X_B]
-\]
+$$
 
 这相当于把原来的 GEMV 转化成小规模 GEMM。PE 在处理当前权重 tile 的多个分支时，存储系统可以预取下一块权重，从而提高有效带宽利用率。
 
 论文给出的调度关系为：
 
-\[
+$$
 KER_{\mathrm{load}} =
 \frac{
 PE_{\mathrm{num}}\times Data_{\mathrm{width}}
 }{
 Bandwidth
 }
-\]
+$$
 
-\[
+$$
 IFM_{\mathrm{load}} =
 KER_{\mathrm{load}}+CAS_{\mathrm{latency}}
-\]
+$$
 
 相关缩写的含义如下：
 
@@ -316,34 +321,34 @@ KER_{\mathrm{load}}+CAS_{\mathrm{latency}}
 
 ##### 一个 DSP 同时执行两个 BF16 乘法
 
-论文利用了多分支计算中的一个特殊条件：同一个权重 \(B\) 会同时乘以两个不同 branch 的 activation \(A_1,A_2\)。
+论文利用了多分支计算中的一个特殊条件：同一个权重 $B$ 会同时乘以两个不同 branch 的 activation $A_1,A_2$。
 
 将两个 BF16 尾数打包到 DSP58 的宽输入端：
 
-\[
+$$
 A_{\mathrm{packed}} =
 (A_2\ll s)+A_1
-\]
+$$
 
-再与共享权重 \(B\) 相乘：
+再与共享权重 $B$ 相乘：
 
-\[
+$$
 A_{\mathrm{packed}}B =
 (A_2B\ll s)+A_1B
-\]
+$$
 
 只要在两个结果之间预留足够的 guard bits，就能从 DSP 输出中分别提取：
 
-\[
+$$
 P_1=A_1B,\qquad P_2=A_2B
-\]
+$$
 
 指数部分则在 DSP 外部单独计算：
 
-\[
+$$
 e_{P_1}=e_{A_1}+e_B,\qquad
 e_{P_2}=e_{A_2}+e_B
-\]
+$$
 
 这并不意味着一个 DSP 可以无条件执行任意两个 BF16 乘法。该打包方法要求两个乘法共享同一个乘数，而 DFVG 的多 branch 计算恰好提供了“同一权重乘多个 activation”的结构。
 
@@ -384,7 +389,7 @@ GPU 侧的 target KV cache 同样只提交最终被接受路径上的 KV，其�
 完整时间线可以理解为：
 
 1. FPGA 生成第一棵动态 token tree。
-2. 当树深达到 \(D_{\min}\) 后，将 token tree 送入待验证队列。
+2. 当树深达到 $D_{\min}$ 后，将 token tree 送入待验证队列。
 3. CPU 通知 GPU，GPU 开始执行 TreeSort-Verify。
 4. GPU 验证上一棵树时，FPGA 继续沿尚未确认的路径向前生成。
 5. GPU 返回接受的前缀长度和已确认 token。
@@ -419,13 +424,13 @@ GLITCHES是一种阶段级 GPU–FPGA 异构推理系统：GPU 执行计算密�
 
 系统的数据路径可以概括为：
 
-\[
+$$
 \text{GPU prefill}
 \rightarrow
 \text{KV 量化与逐层迁移}
 \rightarrow
 \text{FPGA decode}
-\]
+$$
 
 #### 2.5.2 调度与扩展
 
@@ -437,20 +442,20 @@ GLITCHES是一种阶段级 GPU–FPGA 异构推理系统：GPU 执行计算密�
 
 GLITCHES 的 FPGA decode 基于 FlightLLM。FlightLLM 的分组混合精度量化会产生 scale、zero point 等元数据，约占权重体积的 4%–6%。权重与元数据位于不同片上缓冲区，原始调度会发出大量细粒度 LD 指令；指令译码与发射开销使 U280 的 HBM 带宽利用率只有约 40%。
 
-GLITCHES 将后续多个矩阵–向量计算需要的权重和量化元数据提前读取，把多个小请求合并为较粗粒度的访问。预取不会减少总字节数，但会减少 LD 指令数量并增大单次访问尺寸。论文通过误差小于 5% 的性能模拟器为每层选择预取比例；在实验中，预取比例 \(M=4\) 最优，例如 q_proj 的单次权重访问从 8 KB 增至 32 KB，元数据访问从 256 B 增至 1 KB。
+GLITCHES 将后续多个矩阵–向量计算需要的权重和量化元数据提前读取，把多个小请求合并为较粗粒度的访问。预取不会减少总字节数，但会减少 LD 指令数量并增大单次访问尺寸。论文通过误差小于 5% 的性能模拟器为每层选择预取比例；在实验中，预取比例 $M=4$ 最优，例如 q_proj 的单次权重访问从 8 KB 增至 32 KB，元数据访问从 256 B 增至 1 KB。
 
 预取过小不足以摊薄指令开销，过大则会增加片上缓冲压力，并使访存与计算更难形成流水。因此，预取粒度是带宽利用率、缓冲容量和流水覆盖之间的折中。
 
 #### 2.5.4 实验结果
 
-论文使用 LLaMA2-7B：GPU 端为 FP16，FPGA 端为近似 W4A8 的量化实现；GPU 平台为 A100/V100S，FPGA 平台为 U280。数据预取使序列长度为 128 和 1024 时的端到端 decode 性能分别提升 \(1.20\times\) 和 \(1.16\times\)。
+论文使用 LLaMA2-7B：GPU 端为 FP16，FPGA 端为近似 W4A8 的量化实现；GPU 平台为 A100/V100S，FPGA 平台为 U280。数据预取使序列长度为 128 和 1024 时的端到端 decode 性能分别提升 $1.20\times$ 和 $1.16\times$。
 
 | 8 卡系统配置 | 对比基线 | 吞吐提升 | 成本效率提升 |
 |---|---|---:|---:|
-| 1×A100 + 7×U280 | 8×A100 | \(1.28\times\) | \(2.38\times\) |
-| 1×A100 + 7×U280 | 8×U280 | \(1.23\times\) | \(1.08\times\) |
-| 1×V100S + 7×U280 | 8×V100S | \(1.34\times\) | \(1.90\times\) |
-| 1×V100S + 7×U280 | 8×U280 | \(1.21\times\) | \(1.14\times\) |
+| 1×A100 + 7×U280 | 8×A100 | $1.28\times$ | $2.38\times$ |
+| 1×A100 + 7×U280 | 8×U280 | $1.23\times$ | $1.08\times$ |
+| 1×V100S + 7×U280 | 8×V100S | $1.34\times$ | $1.90\times$ |
+| 1×V100S + 7×U280 | 8×U280 | $1.21\times$ | $1.14\times$ |
 
 ## 3. 专题文档索引
 
