@@ -121,7 +121,7 @@ $$
 例如，从 $q(\cdot\mid P)$ 中选择两个候选：
 
 $$
-A,B\in \operatorname{TopK}\big(q(\cdot\mid P)\big).
+A,B\in \mathrm{TopK}\big(q(\cdot\mid P)\big).
 $$
 
 得到：
@@ -153,11 +153,11 @@ $$
 逻辑上分别计算：
 
 $$
-h_A=\operatorname{Draft}(A;\,KV_P^{\text{draft}}),
+h_A=\mathrm{Draft}(A;\,KV_P^{\text{draft}}),
 $$
 
 $$
-h_B=\operatorname{Draft}(B;\,KV_P^{\text{draft}}).
+h_B=\mathrm{Draft}(B;\,KV_P^{\text{draft}}).
 $$
 
 但实现上可以在一次 batched decode 中完成：
@@ -167,7 +167,7 @@ $$
 h_A\\
 h_B
 \end{bmatrix} =
-\operatorname{DraftBatch}
+\mathrm{DraftBatch}
 \left(
 \begin{bmatrix}
 A\\
@@ -306,8 +306,8 @@ $$
 于是：
 
 $$
-\operatorname{Attn}_D =
-\operatorname{softmax}
+\mathrm{Attn}_D =
+\mathrm{softmax}
 \left(
 \frac{Q_D[K_P;K_A]^T}{\sqrt{d_h}}
 \right)
@@ -315,8 +315,8 @@ $$
 $$
 
 $$
-\operatorname{Attn}_C =
-\operatorname{softmax}
+\mathrm{Attn}_C =
+\mathrm{softmax}
 \left(
 \frac{Q_C[K_P;K_B]^T}{\sqrt{d_h}}
 \right)
@@ -361,7 +361,7 @@ $$
 计算量并没有消失：
 
 $$
-\operatorname{FLOPs}(HW)
+\mathrm{FLOPs}(HW)
 \propto
 B\,d_{\text{in}}d_{\text{out}}.
 $$
@@ -521,14 +521,14 @@ $$
 设前缀 $P$ 的长度为 $S$，则：
 
 $$
-\operatorname{pos}(A) =
-\operatorname{pos}(B)
+\mathrm{pos}(A) =
+\mathrm{pos}(B)
 =S,
 $$
 
 $$
-\operatorname{pos}(D) =
-\operatorname{pos}(C)
+\mathrm{pos}(D) =
+\mathrm{pos}(C)
 =S+1.
 $$
 
@@ -549,7 +549,7 @@ $$
 自回归模型在输入一个 token 后，输出的是“下一个 token”的分布：
 
 $$
-\operatorname{Target}(P,A)
+\mathrm{Target}(P,A)
 \longrightarrow
 p(\cdot\mid P,A).
 $$
@@ -609,7 +609,7 @@ $$
 然后检查 $t_1^*$ 是否存在于根节点的候选孩子集合：
 
 $$
-\operatorname{Children}(\text{root})=\{A,B\}.
+\mathrm{Children}(\text{root})=\{A,B\}.
 $$
 
 - 如果 $t_1^*=A$，接受 $A$，进入节点 $A$；

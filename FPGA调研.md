@@ -19,6 +19,7 @@
 ### 1.3 Understanding the Potential of FPGA-Based Spatial Acceleration for Large Language Model Inference
 
 ![](./imgs/FPGA-Based%20Spatial%20Acceleration%20Architecture.png)
+
 该论文提出了空间架构，在FPGA上实现了不同计算单元，分别处理不同的计算任务，比如计算attention和计算FFN的计算单元是不同的，可以在不同计算单元计算不同的token来形成流水线。然而，这种架构与decode天然存在矛盾，decode阶段只有一个token向量，根本无法充分利用不同计算单元的并行性，并且，像layernorm这种计算需要在attention和FFN之间进行，而Layernorm这种计算需要整个token向量，导致attention和FFN之间存在流水屏障，进一步限制了并行流水的效果。这种空间架构降低了FPGA的利用率，增加了FPGA的面积和功耗。
 1. LLM中的一些运算需要用到整个上一阶段计算完成的token向量，天然不适合进行跨阶段流水线设计，流水线只存在于单个算子内部，比如attention和FFN内部的流水线。
 2. FPGA上应该去设计更加通用的计算单元，比如一个矩阵乘法计算单元，可以计算attention中的QK和PV以及FFN的矩阵乘法，而不是为每个算子设计不同的计算单元。
@@ -26,11 +27,16 @@
 
 Hummingbird中提出根据带宽设计FPGA的计算单元，由于带宽有限，即使设计再大的计算单元，由于带宽无法提供更多参数权重，也无法提高计算单元的利用率。Hummingbird中的带宽为19.2 GB/s，带宽很小，所以需要的FPGA资源也很小，比较容易复现。
 其中主要设计了一个矩阵乘法单元，该单元在性能上可能与传统的二维脉动阵列和树形阵列相比并没有优势，但减少了FPGA资源（DSP和FF）的使用，具体架构如图：
+
 ![](./imgs/Hummingbird%20tree%20architecture.png)
+
 这仍然是一个树结构，其中包含 MAC DSP chain 和 add DSP chain。
 MAC DSP chain 如下图所示，它充分使用了一个 DSP 单元中的乘法器和加法器，chain 中每个 DSP 每周期执行一次 MAC 运算，并且支持两种模式，可以避免计算 $PV$ 时对 $V$ 进行转置。
+
 ![](./imgs/Hummingbird%20dsp%20mac%20chain.png)
+
 Add DSP chain 如下图所示，通过 3 个 DSP 级联实现 6 输入、1 输出的加法器。
+
 ![](./imgs/Hummingbird%20dsp%20add%20chain.png)
 
 传统树结构需要 128 个 DSP 作为乘法器，$64+32+16+8+4+2+1=127$ 个 DSP 作为加法器，一共需要 255 个 DSP；Hummingbird 只需要 $128+15+1+3=147$ 个 DSP，节省 108 个 DSP，即约 42% 的 DSP 资源。
@@ -154,7 +160,9 @@ GPU 已经保存完整 KV，所以只需根据索引执行 gather。
 这是论文最关键的系统设计决策之一：FPGA 保存小型索引副本，GPU 保存原始数据。
 
 **具体kernel架构**
+
 ![](./imgs/general%20steup%20kernel设计.png)
+
 可以看到，这种kernel设计的复杂度明显低于前面将所有LLM推理阶段都放到FPGA的设计。
 
 **batch 越大，FPGA 相对优势越大**
@@ -232,10 +240,13 @@ FPGA 上的 cross attention 包含部分线性投影。随着 batch 增大，GPU
 这篇论文中将drafter部署在FPGA上，将target部署在GPU上。为了提高drafter的吞吐量，drafter使用了tree-based speculative decoding算法，drafter的输出是一个树结构，target从树结构中选择最优的token链作为最终输出。
 在GPU上的target进行验证的同时，drafter会持续构建树结构，在target验证完成后，drafter会进行剪枝和回退，再继续构建树结构。这将drafter和target的工作进行了流水线化，减少了等待时间，提高了系统的吞吐量。
 有关算法相关细节可见[树状结构的speculative decoding算法](./tree_based_speculative_decoding_workflow.md)。
+
 ![](./imgs/DFVG%20draft%20tree%20architecture.png)
+
 #### TreeSort-Verify：GPU 如何验证一棵树
 
 ![](./imgs/tree%20sort%20reorder.png)
+
 DFVG 通过 path packing 对节点重新排序，使同一路径或具有较多共享祖先的 token 尽可能相邻。例如可以重排为：
 
 $$
@@ -252,14 +263,15 @@ $$
 论文将其写为：
 
 $$
-\operatorname{Att}_{\mathrm{tree}}=
+\mathrm{Att}_{\mathrm{tree}}=
 \bigoplus_{k=1}^{K}
-\operatorname{Att}_{\mathrm{block}}
+\mathrm{Att}_{\mathrm{block}}
 (Q_{B_k},K_{B_k},V_{B_k},M_{B_k})
 $$
 
 其中，$\bigoplus$ 表示将各 block 的输出恢复到原始 token tree 顺序。
 #### FPGA 上的 Multi Compute Core Overlay
+
 ![](./imgs/DVFG%20PE%20architecture.png)
 
 ##### PE 数据流
