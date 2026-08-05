@@ -458,6 +458,8 @@ GLITCHES 将后续多个矩阵–向量计算需要的权重和量化元数据�
 
 预取过小不足以摊薄指令开销，过大则会增加片上缓冲压力，并使访存与计算更难形成流水。因此，预取粒度是带宽利用率、缓冲容量和流水覆盖之间的折中。
 
+![](./imgs/GLITCHES%20data%20prefetch.png)
+
 #### 2.5.4 实验结果
 
 论文使用 LLaMA2-7B：GPU 端为 FP16，FPGA 端为近似 W4A8 的量化实现；GPU 平台为 A100/V100S，FPGA 平台为 U280。数据预取使序列长度为 128 和 1024 时的端到端 decode 性能分别提升 $1.20\times$ 和 $1.16\times$。
@@ -469,8 +471,194 @@ GLITCHES 将后续多个矩阵–向量计算需要的权重和量化元数据�
 | 1×V100S + 7×U280 | 8×V100S | $1.34\times$ | $1.90\times$ |
 | 1×V100S + 7×U280 | 8×U280 | $1.21\times$ | $1.14\times$ |
 
+| 指标                 |      A100 FP16 |     V100S FP16 |      U280 W4A8 |
+| ------------------ | -------------: | -------------: | -------------: |
+| 峰值带宽               |      1935 GB/s |      1134 GB/s |       460 GB/s |
+| Prefill 1536 延迟    |      175.85 ms |      398.80 ms |     5001.20 ms |
+| Decode 平均延迟        | 24.26 ms/token | 29.52 ms/token | 21.50 ms/token |
+| Decode 每 token 访存量 |       14.08 GB |       14.08 GB |        3.96 GB |
+| Decode 带宽利用率       |         29.99% |         42.06% |         40.08% |
+| Decode 功耗          |        167.3 W |        222.5 W |         46.0 W |
+
+这篇论文中FPGA使用的参数是W4A8，而GPU使用的参数是FP16，所以说这里Decode 平均延迟指标的FPGA之所以能比 A100 的 24.26 ms 略快，不是因为它具有更高带宽，而是因为FPGA使用了更低bit的参数，减少了每个token需要读取的有效参数字节数，从而提高了生成速度。
+
+### 2.6 A Persistent-State Dataflow Accelerator for Memory-Bound Linear Attention Decode on FPGA
+这篇论文将GDN部署在FPGA上，论文声称的最佳结果是单个 GDN layer、batch=1、FP32 decode 延迟为 $63.2\ \mu s$，相对 H100 PyTorch reference 加速 $4.5\times$。但该结果只来自 HLS 综合周期估计；真正完成布局布线的 $H_{\text{iter}}=2$ 配置在 263 MHz 下为 $161.7\ \mu s$，相对 H100 的严格可实现加速约为 $1.76\times$。
+#### 2.6.1 Persistent-State GDN
+GDN中的线性注意力大小不会随着序列长度的增加而增加，所需要的状态量固定，非常适合常驻在FPGA当中，省去反复加加载的开销。
+
+论文针对 Qwen3-Next 风格的单个 GDN layer：
+
+| 参数 | 数值 |
+|---|---:|
+| query heads $h_q$ | 16 |
+| key heads $h_k$ | 16 |
+| value heads $h_v$ | 32 |
+| head dimension $d$ | 128 |
+| 数据类型 | FP32 |
+| batch size | 1 |
+| 每个 value head 的状态 | $128\times128$ FP32 |
+
+总状态容量为：
+
+\[
+h_vd^2\times4
+=32\times128\times128\times4
+=2{,}097{,}152\ \text{bytes}
+=2\ \text{MiB}.
+\]
+
+GPU 每个 token 至少需要读取和写回一次状态，因此状态流量为：
+
+\[
+2\ \text{MiB read}+2\ \text{MiB write}
+=4\ \text{MiB/token/layer}.
+\]
+
+除此之外，整次 recurrence 只有约 $4.2$ MFLOPs。按是否计入 token 输入等细节，其算术强度约为 $0.87\sim1.0$ FLOP/B，远低于 H100 FP32 roofline 的 ridge point，因此结构上属于 memory-bound workload。
+
+状态既可以常驻在FPGA，并且本身计算强度低，非常适合 FPGA 处理。
+
+#### 2.6.2 计算优化
+论文对状态更新和输出计算进行了优化，将状态访问次数从3次降到2次。
+
+将状态更新代入输出：
+
+\[
+\begin{aligned}
+S_t^{\mathsf T}q_t
+&=\left(g_tS_{t-1}+k_t\Delta v_t^{\mathsf T}\right)^{\mathsf T}q_t\\
+&=g_tS_{t-1}^{\mathsf T}q_t
++\Delta v_t(k_t^{\mathsf T}q_t).
+\end{aligned}
+\]
+
+等价地写成：
+
+\[
+S_t^{\mathsf T}q_t
+=g_tS_{t-1}^{\mathsf T}q_t
++(q_t^{\mathsf T}k_t)\Delta v_t.
+\]
+
+于是第一次读取旧状态时，可以同时计算：
+
+\[
+r_t=S_{t-1}^{\mathsf T}k_t.
+\]
+
+和：
+
+\[
+\hat o_t=g_tS_{t-1}^{\mathsf T}q_t.
+\]
+
+之后用一个向量修正项得到输出：
+
+\[
+\Delta v_t=\beta_t(v_t-r_t).
+\]
+
+\[
+o_t=\frac1{\sqrt d}{(\hat o_t+(q_t^{\mathsf T}k_t)\Delta v_t)}.
+\]
+
+因此无需为了输出再次读取更新后的 $S_t$。状态访问变为：
+
+1. 一次 read pass：同时计算 $S_{t-1}^{\mathsf T}k_t$ 和 $S_{t-1}^{\mathsf T}q_t$；
+2. 一次 read-modify-write pass：计算并写回 $S_t$。
+
+理论状态遍历成本从 $3072$ cycles 降为约 $2048$ cycles；计入短向量运算和流水启动，论文 HLS 报告中的实际 iteration interval 约为 $2106$ cycles，约带来 $1.46\times$ 改善。
+
+#### 2.6.3 dataflow architcecture
+![](./imgs/GDN%20dataflow%20architcture.png)
+论文使用hls设计IP核，实现了5阶段流水线，分别是：
+- Phase 1：query-key 点积
+
+\[
+a_t=q_t^{\mathsf T}k_t.
+\]
+
+这里用 $a_t$ 表示临时点积，避免与门控输入 $\alpha_t$ 混淆。
+
+- Phase 2：一次状态读取完成两组矩阵向量乘
+
+在同一次 BRAM read pass 中，对旧状态同时累加：
+
+\[
+r_t=S_{t-1}^{\mathsf T}k_t,
+\]
+
+\[
+\hat o_t=g_tS_{t-1}^{\mathsf T}q_t.
+\]
+
+同一个状态元素被同时用于与 $k_t$ 和 $q_t$ 相乘，从而共享状态读取。
+
+- Phase 3：Delta correction
+
+\[
+\Delta v_t=\beta_t(v_t-r_t).
+\]
+
+- Phase 4：输出修正
+
+\[
+o_t=\frac1{\sqrt d}(\hat o_t+a_t\Delta v_t).
+\]
+
+- Phase 5：状态更新
+
+\[
+S_t=g_tS_{t-1}+k_t\Delta v_t^{\mathsf T}.
+\]
+
+并设计了Prepare–Compute–Store 三层 dataflow
+
+每个 head group 的处理分成三个大阶段：
+
+1. **Prepare**：从输入 buffer 取对应的 $q,k,v$，计算 $g_t,\beta_t$；
+2. **Compute**：执行五阶段 fused GDN datapath；
+3. **Store**：把该组输出经 AXI 写回外部存储。
+
+HLS dataflow 允许不同 head groups 重叠：
+
+- group $n-1$：Store；
+- group $n$：Compute；
+- group $n+1$：Prepare。
+
+稳态 interval 由最慢的 Compute 阶段决定，约为：
+
+\[
+II_{\text{group}}\approx2106\ \text{cycles}.
+\]
+
+需要特别强调：这种重叠发生在**同一个 token 的不同 head group 之间**，不是相邻生成 token 之间的流水。自回归依赖仍要求下一个 token 等待当前 token 以及模型剩余算子完成。
+
+#### 2.6.4 实验结果
+| 配置 | 周期数 | 延迟 | 相对 H100 | 证据级别 |
+|---|---:|---:|---:|---|
+| H100 PCIe | — | $285\ \mu s$ | $1\times$ | GPU 实测 |
+| $H_{\text{iter}}=2$，300 MHz | 42,538 | $141.7\ \mu s$ | $2.0\times$ | HLS 综合周期估计 |
+| $H_{\text{iter}}=2$，263 MHz | 42,538 | $161.7\ \mu s$ | 约 $1.76\times$ | 完成布局布线 |
+| $H_{\text{iter}}=4$，300 MHz | 26,252 | $87.4\ \mu s$ | $3.3\times$ | 综合；布局布线失败 |
+| $H_{\text{iter}}=8$，300 MHz | 18,978 | $63.2\ \mu s$ | $4.5\times$ | 仅综合估计 |
+| $H_{\text{iter}}=16$，300 MHz | 23,206 | $77.4\ \mu s$ | $3.7\times$ | 仅综合估计 |
+
+该论文比较的仅为单个 GDN layer 的 decode 延迟，而不是整个 LLM decode 延迟。由于 GDN layer 只占 LLM decode 的一部分，论文声称的 $4.5\times$ 加速并不代表整个 LLM decode 的加速。
 ## 3. 专题文档索引
 
 - [Tree-based Speculative Decoding：Draft 构树与 Target 验证计算流程](./tree_based_speculative_decoding_workflow.md)
 - [二维脉动阵列：Output-Stationary 与 DFVG 数据流对比](./二维脉动阵列_Output-Stationary与DFVG数据流对比.md)
 - [一个 DSP 同时计算两个 BF16 乘法的原理](./DSP58_单DSP双BF16乘法原理.md)
+
+## IDEA
+1. KDA/DSpark/MOE通过LLM进行协作处理。[详情](./KDA_GPU-FPGA_讨论整理.md)
+2. 视频、雷达等的多模态输入的encoder交给FPGA进行实现，最好能实现对encode内容的压缩，减少传输到GPU的带宽需求。
+
+## 华为项目进展
+目前对ViT reuse框架的训练正确性验证已经完成。
+上上周五与华为进行了讨论，目前华为那边的想法是：
+1. actor和rollouter都直接使用低bit的模型，这样就不存在低bit所带来的训推并不一致的问题。
+2. rollout的response长度基本一致，不存在超长case，这种情况下同步RL的性能可能会更好。
+所以目前华为那边可能对低bit训推不一致的问题不太关心，他们说如果在训练时发现其他困难，会联系我们。
